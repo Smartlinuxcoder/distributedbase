@@ -1,111 +1,59 @@
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const fs = require('fs');
+const crypto = require('crypto');
 const db = require('../config/db');
-const { mergeDeep } = require('../utils/helpers');
+const { jwtSecret } = require('../../config');
 
-exports.writeJson = (req, res) => {
+const generateSalt = (length) => crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length);
+const generateHash = (data) => crypto.createHash('sha256').update(data).digest('hex');
+
+exports.register = async (req, res) => {
     try {
-        const { sessiontoken, website, data } = req.body;
-        const sessionpath = `./data/sessions/${sessiontoken}.txt`;
-        const sessionfile = fs.readFileSync(sessionpath, 'utf8');
-        const parts = sessionfile.split('--');
-        const username = parts[2];
-        const filePath = `./data/usercontent/${username}.json`;
-
-        let jsonData = {};
-        try {
-            const existingData = fs.readFileSync(filePath);
-            jsonData = JSON.parse(existingData);
-        } catch (err) {
-            console.error("Error reading JSON file:", err);
-        }
-
-        if (website !== parts[0]) {
-            return res.status(403).send("Access denied. Invalid token.");
-        }
-
-        jsonData[website] = data;
-        fs.writeFile(filePath, JSON.stringify(jsonData, null, 2), (err) => {
+        const { username, password } = req.body;
+        const hashedPassword = await bcrypt.hash(password, 10);
+        db.run("INSERT INTO users (username, password) VALUES (?, ?)", [username, hashedPassword], function (err) {
             if (err) {
                 console.error(err);
-                return res.status(500).send("Error writing to JSON file");
+                return res.status(400).send("Username already exists");
             }
-            res.status(200).send(`Data written to ${username}.json under ${website} successfully`);
+            res.status(201).send("User registered successfully");
         });
     } catch (error) {
         console.error(error);
-        res.status(500).send("Error writing to JSON file");
+        res.status(500).send("Error registering user");
     }
 };
 
-exports.updateJson = (req, res) => {
+exports.login = async (req, res) => {
     try {
-        const { sessiontoken, website, data } = req.body;
-        const sessionpath = `./data/sessions/${sessiontoken}.txt`;
-        const sessionfile = fs.readFileSync(sessionpath, 'utf8');
-        const parts = sessionfile.split('--');
-        const username = parts[2];
-        const filePath = `./data/usercontent/${username}.json`;
-
-        let jsonData = {};
-        try {
-            const existingData = fs.readFileSync(filePath);
-            jsonData = JSON.parse(existingData);
-        } catch (err) {
-            if (err.code === 'ENOENT') {
-                jsonData = {};
-            } else {
-                console.error("Error reading JSON file:", err);
-                return res.status(500).send("Error reading JSON file");
-            }
-        }
-
-        if (website !== parts[0]) {
-            return res.status(403).send("Access denied. Invalid token.");
-        }
-
-        jsonData[website] = mergeDeep(jsonData[website] || {}, data);
-
-        fs.writeFile(filePath, JSON.stringify(jsonData, null, 2), (err) => {
+        const { username, password, site } = req.body;
+        db.get("SELECT * FROM users WHERE username = ?", [username], async (err, row) => {
             if (err) {
                 console.error(err);
-                return res.status(500).send("Error writing to JSON file");
+                return res.status(500).send("Error logging in");
             }
-            res.status(200).send(`Data updated in ${username}.json under ${website} successfully`);
+            if (!row) {
+                return res.status(400).send("Invalid username or password");
+            }
+            const isValidPassword = await bcrypt.compare(password, row.password);
+            if (!isValidPassword) {
+                return res.status(400).send("Invalid username or password");
+            }
+            const token = jwt.sign({ username: row.username }, jwtSecret);
+            const timestamp = Date.now();
+            const salt = generateSalt(16);
+            const session = `${site}--${token}--${username}--${timestamp}--${salt}`;
+            const hash = generateHash(session);
+            const filePath = `./data/sessions/${hash}.txt`;
+            fs.writeFileSync(filePath, session);
+            setTimeout(() => {
+                fs.unlinkSync(filePath);
+            }, 10 * 60 * 1000); // 10 minutes in milliseconds
+            res.status(200).json({ hash });
         });
     } catch (error) {
         console.error(error);
-        res.status(500).send("Error updating JSON file");
-    }
-};
-
-exports.readJson = (req, res) => {
-    try {
-        const { sessiontoken, website } = req.body;
-        const sessionpath = `./data/sessions/${sessiontoken}.txt`;
-        const sessionfile = fs.readFileSync(sessionpath, 'utf8');
-        const parts = sessionfile.split('--');
-        const username = parts[2];
-        const filePath = `./data/usercontent/${username}.json`;
-
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                console.error(err);
-                return res.status(500).send("Error reading JSON file");
-            }
-            try {
-                const jsonData = JSON.parse(data);
-                const websiteData = jsonData[website];
-                if (!websiteData) {
-                    return res.status(404).send("Website data not found");
-                }
-                res.status(200).json(websiteData);
-            } catch (parseError) {
-                console.error(parseError);
-                res.status(500).send("Error parsing JSON data");
-            }
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).send("Error reading JSON file");
+        res.status(500).send("Error logging in");
     }
 };
