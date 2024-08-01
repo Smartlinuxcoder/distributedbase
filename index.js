@@ -2,8 +2,11 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 require('dotenv').config();
+const logger = require('./src/logging');
 
 const app = express();
+
+app.use(logger);
 
 app.use(bodyParser.json());
 app.use(cors());
@@ -18,11 +21,11 @@ app.use((err, req, res, next) => {
 const dbRoutes = require('./src/routes/dbRoutes');
 const siteRoutes = require('./src/routes/siteRoutes');
 const userRoutes = require('./src/routes/userRoutes');
-
+app.use(express.static('public'));
 // Use routes
 app.use('/api/db', dbRoutes);
 app.use('/api/site', siteRoutes);
 app.use('/api/user', userRoutes);
 
-const PORT = process.env.PORT || 3333;
+const PORT = process.env.PORT || 8090;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
