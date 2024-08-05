@@ -6,6 +6,7 @@ const logger = require('./src/logging');
 
 const app = express();
 
+
 app.use(logger);
 
 app.use(bodyParser.json());
