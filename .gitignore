@@ -1,6 +1,5 @@
 node_modules/
 .env
-data/sessions/*
-data/usercontent/*
+
 data/access.log
 data/users.db
