@@ -2,42 +2,39 @@ const fs = require('fs');
 const db = require('../config/db');
 const { mergeDeep } = require('../utils/helpers');
 const bcrypt = require('bcrypt');
-exports.writeJson = (req, res) => {
+exports.writeJson = async (req, res) => {
     try {
         const { sessiontoken, website, data, username, websitepassword, privileges } = req.body;
         if (websitepassword !== undefined && privileges !== undefined) {
-            db.get("SELECT * FROM sites WHERE site = ?", [website], async (err, row) => {
-                if (err) {
-                    console.error(err);
-                    return res.status(500).send("Error logging in");
+            const result = await db.query("SELECT * FROM sites WHERE site = $1", [website]);
+            const row = result.rows[0];
+            if (!row) {
+                return res.status(400).send("Invalid site or password");
+            }
+            const isValidPassword = await bcrypt.compare(websitepassword, row.password);
+            if (!isValidPassword) {
+                return res.status(400).send("Invalid site or password");
+            }
+            if (privileges !== "rw" && privileges !== "ro" && privileges !== "root") {
+                return res.status(400).send("Invalid privileges");
+            } else {
+                const filePath = `./data/usercontent/${username}.json`;
+                try {
+                    const existingData = fs.readFileSync(filePath);
+                    jsonData = JSON.parse(existingData);
+                } catch (err) {
+                    console.error("Error reading JSON file:", err);
                 }
-                if (!row) {
-                    return res.status(400).send("Invalid site or password");
-                }
-                const isValidPassword = await bcrypt.compare(websitepassword, row.password);
-                if (!isValidPassword) {
-                    return res.status(400).send("Invalid site or password");
-                }
-                if (privileges !== "rw" && privileges !== "ro" && privileges !== "root") {
-                    return res.status(400).send("Invalid privileges");
-                } else {
-                    const filePath = `./data/usercontent/${username}.json`;
-                    try {
-                        const existingData = fs.readFileSync(filePath);
-                        jsonData = JSON.parse(existingData);
-                    } catch (err) {
-                        console.error("Error reading JSON file:", err);
+                jsonData[website][privileges] = data;
+                fs.writeFile(filePath, JSON.stringify(jsonData, null, 2), (err) => {
+                    if (err) {
+                        console.error(err);
+                        return res.status(500).send("Error writing to JSON file");
                     }
-                    jsonData[website][privileges] = data;
-                    fs.writeFile(filePath, JSON.stringify(jsonData, null, 2), (err) => {
-                        if (err) {
-                            console.error(err);
-                            return res.status(500).send("Error writing to JSON file");
-                        }
-                        return res.status(200).send(`Data written to ${username}.json under ${website} successfully`);
-                    });
-                }
-            });
+                    return res.status(200).send(`Data written to ${username}.json under ${website} successfully`);
+                });
+            }
+
         } else {
 
             const sessionpath = `./data/sessions/${sessiontoken}.txt`;
@@ -73,42 +70,39 @@ exports.writeJson = (req, res) => {
     }
 };
 
-exports.updateJson = (req, res) => {
+exports.updateJson = async (req, res) => {
     try {
         const { sessiontoken, website, data, username, websitepassword, privileges } = req.body;
         if (websitepassword !== undefined && privileges !== undefined) {
-            db.get("SELECT * FROM sites WHERE site = ?", [website], async (err, row) => {
-                if (err) {
-                    console.error(err);
-                    return res.status(500).send("Error logging in");
+            const result = await db.query("SELECT * FROM sites WHERE site = $1", [website]);
+            const row = result.rows[0];
+
+            if (!row) {
+                return res.status(400).send("Invalid site or password");
+            }
+            const isValidPassword = await bcrypt.compare(websitepassword, row.password);
+            if (!isValidPassword) {
+                return res.status(400).send("Invalid site or password");
+            }
+            if (privileges !== "rw" && privileges !== "ro" && privileges !== "root") {
+                return res.status(400).send("Invalid privileges");
+            } else {
+                const filePath = `./data/usercontent/${username}.json`;
+                try {
+                    const existingData = fs.readFileSync(filePath);
+                    jsonData = JSON.parse(existingData);
+                } catch (err) {
+                    console.error("Error reading JSON file:", err);
                 }
-                if (!row) {
-                    return res.status(400).send("Invalid site or password");
-                }
-                const isValidPassword = await bcrypt.compare(websitepassword, row.password);
-                if (!isValidPassword) {
-                    return res.status(400).send("Invalid site or password");
-                }
-                if (privileges !== "rw" && privileges !== "ro" && privileges !== "root") {
-                    return res.status(400).send("Invalid privileges");
-                } else {
-                    const filePath = `./data/usercontent/${username}.json`;
-                    try {
-                        const existingData = fs.readFileSync(filePath);
-                        jsonData = JSON.parse(existingData);
-                    } catch (err) {
-                        console.error("Error reading JSON file:", err);
+                jsonData[website][privileges] = mergeDeep(jsonData[website][privileges] || {}, data);
+                fs.writeFile(filePath, JSON.stringify(jsonData, null, 2), (err) => {
+                    if (err) {
+                        console.error(err);
+                        return res.status(500).send("Error writing to JSON file");
                     }
-                    jsonData[website][privileges] = mergeDeep(jsonData[website][privileges] || {}, data);
-                    fs.writeFile(filePath, JSON.stringify(jsonData, null, 2), (err) => {
-                        if (err) {
-                            console.error(err);
-                            return res.status(500).send("Error writing to JSON file");
-                        }
-                        res.status(200).send(`Data updated in ${username}.json under ${website} successfully`);
-                    });
-                }
-            });
+                    res.status(200).send(`Data updated in ${username}.json under ${website} successfully`);
+                });
+            }
         } else {
             const sessionpath = `./data/sessions/${sessiontoken}.txt`;
             const sessionfile = fs.readFileSync(sessionpath, 'utf8');
@@ -149,42 +143,40 @@ exports.updateJson = (req, res) => {
     }
 };
 
-exports.readJson = (req, res) => {
+exports.readJson = async (req, res) => {
     const { sessiontoken, website, username, websitepassword, privileges } = req.body;
     if (websitepassword !== undefined) {
-        db.get("SELECT * FROM sites WHERE site = ?", [website], async (err, row) => {
+        const result = await db.query("SELECT * FROM sites WHERE site = $1", [website]);
+        const row = result.rows[0];
+
+        if (!row) {
+            return res.status(400).send("Invalid site or password");
+        }
+        const isValidPassword = await bcrypt.compare(websitepassword, row.password);
+        if (!isValidPassword) {
+            return res.status(400).send("Invalid site or password");
+        }
+
+        const filePath = `./data/usercontent/${username}.json`;
+        fs.readFile(filePath, (err, data) => {
             if (err) {
                 console.error(err);
-                return res.status(500).send("Error logging in");
+                return res.status(500).send("Error reading JSON file");
             }
-            if (!row) {
-                return res.status(400).send("Invalid site or password");
-            }
-            const isValidPassword = await bcrypt.compare(websitepassword, row.password);
-            if (!isValidPassword) {
-                return res.status(400).send("Invalid site or password");
-            }
-
-            const filePath = `./data/usercontent/${username}.json`;
-            fs.readFile(filePath, (err, data) => {
-                if (err) {
-                    console.error(err);
-                    return res.status(500).send("Error reading JSON file");
+            try {
+                const jsonData = JSON.parse(data);
+                const websiteData = jsonData[website];
+                if (!websiteData) {
+                    return res.status(404).send("Website data not found");
                 }
-                try {
-                    const jsonData = JSON.parse(data);
-                    const websiteData = jsonData[website];
-                    if (!websiteData) {
-                        return res.status(404).send("Website data not found");
-                    }
-                    res.status(200).json(websiteData);
-                } catch (parseError) {
-                    console.error(parseError);
-                    res.status(500).send("Error parsing JSON data");
-                }
-            });
-
+                res.status(200).json(websiteData);
+            } catch (parseError) {
+                console.error(parseError);
+                res.status(500).send("Error parsing JSON data");
+            }
         });
+
+
     } else {
         try {
             const sessionpath = `./data/sessions/${sessiontoken}.txt`;
@@ -220,3 +212,6 @@ exports.readJson = (req, res) => {
         }
     }
 };
+
+
+
