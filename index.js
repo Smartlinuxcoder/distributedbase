@@ -6,6 +6,8 @@ const logger = require('./src/logging');
 
 const app = express();
 
+app.set('trust proxy', true);
+
 app.use(logger);
 
 app.use(bodyParser.json());
