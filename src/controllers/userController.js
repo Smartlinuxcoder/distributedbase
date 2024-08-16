@@ -39,16 +39,16 @@ exports.login = async (req, res) => {
         }
 
         const token = jwt.sign({ username: row.username }, jwtSecret);
-        const timestamp = Date.now();
+        const timestamp = new Date().toISOString();
         const salt = generateSalt(16);
         const session = `${site}--${token}--${username}--${timestamp}--${salt}`;
         const hash = generateHash(session);
-        const filePath = `./data/sessions/${hash}.txt`;
-        
-        fs.writeFileSync(filePath, session);
-        setTimeout(() => {
-            fs.unlinkSync(filePath);
-        }, 10 * 60 * 1000); // 10 minutes in milliseconds
+
+        // Insert session details into the sessions table
+        await db.query(`
+            INSERT INTO sessions (token, username, site, timestamp, salt)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [hash, username, site, timestamp, salt]);
 
         res.status(200).json({ hash });
     } catch (error) {

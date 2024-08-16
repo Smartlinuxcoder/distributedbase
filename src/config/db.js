@@ -23,7 +23,8 @@ client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username TEXT UNIQUE,
-        password TEXT
+        password TEXT,
+        usercontent JSONB
       )
     `, (err, res) => {
   if (err) throw err;
@@ -37,8 +38,18 @@ client.query(`
     `, (err, res) => {
   if (err) throw err;
 });
-
-
+client.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id SERIAL PRIMARY KEY,
+        token TEXT UNIQUE,
+        username TEXT,
+        site TEXT,
+        timestamp TEXT,
+        salt TEXT
+      )
+    `, (err, res) => {
+  if (err) throw err;
+});
 module.exports = client;
 
 
